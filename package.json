@@ -1,0 +1,17 @@
+{
+  "name": "personal-gemini-journal-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Secure Personal Gemini Journal — Hackathon Monorepo",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "server": "npm --prefix server start",
+    "client": "npm --prefix client dev",
+    "dev": "concurrently \"npm --prefix server start\" \"npm --prefix client dev\"",
+    "build": "npm --prefix client build",
+    "test:server": "npm --prefix server test"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
