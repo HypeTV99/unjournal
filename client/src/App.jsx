@@ -131,6 +131,15 @@ export default function App() {
     }
   };
 
+  const cleanAIText = (text) => {
+    if (!text || typeof text !== 'string') return '';
+    return text
+      .replace(/^<thought>[\s\S]*?<\/thought>/gi, '')
+      .replace(/^<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/^(Constraints|Constraints:|Thought Process:|Plan:|Meta:|Persona:)\s*(\*[^\n]*|\n)*/gim, '')
+      .trimStart();
+  };
+
   const handleSendMessage = async (textOverride = null) => {
     const rawText = (textOverride || inputMessage || '').trim();
     if (!rawText && !attachedPhoto) return;
@@ -260,12 +269,12 @@ export default function App() {
           };
         },
         onChunk: (fullText) => {
-          accumulatedText = fullText;
+          accumulatedText = cleanAIText(fullText);
         }
       });
 
       streamComplete = true;
-      accumulatedText = response.reply || accumulatedText;
+      accumulatedText = cleanAIText(response.reply || accumulatedText);
       modelMeta = {
         ...modelMeta,
         modelUsed: response.modelUsed || modelMeta.modelUsed,

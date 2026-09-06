@@ -49,13 +49,17 @@ EMOTIONAL SAFETY:
 REFLECTION & OUTPUT:
 - Explore, don't prescribe: questions, observations, summaries, possible interpretations — never verdicts on feelings. Not every entry is a problem to solve; acknowledging or organizing a thought is often enough.
 - Calm, warm, concise, non-judgmental. No excessive praise, shame, lectures, or moralizing. Vary prompts from their history; avoid generic repeats.
-- Default shape: observation → reflection → optional single question. Never make high-stakes medical, legal, financial, or safety decisions for the user; help examine options, trade-offs, and priorities instead.`;
+- Default shape: observation → reflection → optional single question. Never make high-stakes medical, legal, financial, or safety decisions for the user; help examine options, trade-offs, and priorities instead.
+
+ZERO META-LEAKAGE & OUTPUT DISCIPLINE (ABSOLUTE RULE):
+- Speak directly and naturally to the user in the first person as their companion.
+- NEVER output internal thoughts, reasoning steps, prompt instructions, system guidelines, constraint checklists, or meta-labels (such as "Constraints:", "Reasoning:", "Persona:", "Plan:", or "Thought:").
+- Your response must begin immediately with your natural conversational reply to the user.`;
 
 const CANDIDATE_CHAT_MODELS = [
-  'gemini-3.6-flash',
-  'gemini-2.5-flash',
-  'gemini-flash-latest',
   'gemini-flash-lite-latest',
+  'gemini-3.6-flash',
+  'gemini-flash-latest',
   'gemini-3.1-flash-lite'
 ];
 
@@ -81,14 +85,8 @@ async function getGeminiModel(modelName = 'gemini-3.1-flash-lite', systemInstruc
   const baseConfig = {
     temperature: 0.7,
     topP: 0.95,
-    maxOutputTokens: 300
+    maxOutputTokens: 1000
   };
-
-  if (targetModel.includes('gemini-3') || targetModel.includes('gemini-2.5')) {
-    baseConfig.thinkingConfig = {
-      thinkingLevel: 'MINIMAL'
-    };
-  }
 
   return genAI.getGenerativeModel({
     model: targetModel,
@@ -100,6 +98,24 @@ async function getGeminiModel(modelName = 'gemini-3.1-flash-lite', systemInstruc
       ...customConfig
     }
   });
+}
+
+/**
+ * Strips any leaked thought tokens, internal chain-of-thought, or prompt constraint echoes
+ */
+export function sanitizeModelOutput(text) {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text;
+
+  // 1. Strip XML/HTML style thought blocks: <thought>...</thought>, <think>...</think>
+  cleaned = cleaned.replace(/<thought[\s\S]*?<\/thought>/gi, '');
+  cleaned = cleaned.replace(/<think[\s\S]*?<\/think>/gi, '');
+
+  // 2. Strip leaked constraint checklists or meta-labels (e.g. "Constraints: * Conversational")
+  cleaned = cleaned.replace(/^(Constraints|Constraints:|Thought Process:|Plan:|Meta:|Persona:)\s*(\*[^\n]*|\n)*/gim, '');
+
+  cleaned = cleaned.trim();
+  return cleaned;
 }
 
 function sanitizeGeminiHistory(rawHistory, currentMessage) {
@@ -216,11 +232,12 @@ ${relevantMemoryContext}`;
 
       const chatPromise = chat.sendMessage(message);
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Model ${modelCandidate} chat timeout`)), 15000)
+        setTimeout(() => reject(new Error(`Model ${modelCandidate} chat timeout`)), 25000)
       );
       const result = await Promise.race([chatPromise, timeoutPromise]);
       const response = await result.response;
-      const replyText = response.text();
+      const rawReply = response.text();
+      const replyText = sanitizeModelOutput(rawReply) || "I am reflecting with you. What feels like the most important part of this to explore next?";
 
       return {
         reply: replyText,
@@ -307,7 +324,7 @@ ${relevantMemoryContext}`;
   for (const modelCandidate of CANDIDATE_CHAT_MODELS) {
     try {
       const model = await getGeminiModel(modelCandidate, fullSystemInstruction, {
-        maxOutputTokens: 200
+        maxOutputTokens: 1000
       });
       const chat = model.startChat({
         history: sanitizedHistory
@@ -316,7 +333,7 @@ ${relevantMemoryContext}`;
       // Upstream stream resolution timeout
       const streamPromise = chat.sendMessageStream(message);
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Model ${modelCandidate} stream timeout`)), 15000)
+        setTimeout(() => reject(new Error(`Model ${modelCandidate} stream timeout`)), 25000)
       );
 
       const responseStream = await Promise.race([streamPromise, timeoutPromise]);
