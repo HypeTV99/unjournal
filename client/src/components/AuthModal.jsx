@@ -79,20 +79,19 @@ export default function AuthModal() {
   };
 
   const handleConfirmGoogleLogin = async () => {
+    if (!selectedGoogleAccount) return;
     setLoading(true);
     try {
-      const accountToUse = selectedGoogleAccount || {
-        email: customGoogleEmail.trim() || 'oxygenbittv@gmail.com',
-        displayName: customGoogleName.trim() || 'Oxygenbit TV',
-        photoURL: 'https://lh3.googleusercontent.com/a-/ALV-UjWyRc51Fg22B9XRkpyMxkQN60LjSi-6GQFFXxmApwXOcxSB6w=s96-c'
-      };
-
       // 1. Request microphone & location permissions in the browser
       await requestJournalPermissions();
 
       // 2. Log in with Google Account credentials (name & email only)
-      await loginWithGoogleAccount(accountToUse);
+      await loginWithGoogleAccount(selectedGoogleAccount);
       setShowGoogleModal(false);
+      setPermissionStep(false);
+      setSelectedGoogleAccount(null);
+      setCustomGoogleEmail('');
+      setCustomGoogleName('');
     } catch (err) {
       setError(err.message || 'Failed to complete Google authentication.');
     } finally {
@@ -275,6 +274,9 @@ export default function AuthModal() {
               onClick={() => {
                 setShowGoogleModal(false);
                 setPermissionStep(false);
+                setSelectedGoogleAccount(null);
+                setCustomGoogleEmail('');
+                setCustomGoogleName('');
               }}
               className="absolute top-5 right-5 p-2 text-white/50 hover:text-white rounded-full border border-white/10 hover:border-white/30 bg-white/5 transition-all"
             >
@@ -297,7 +299,7 @@ export default function AuthModal() {
                     Sign in with Google
                   </h2>
                   <p className="text-xs text-white/50 font-body">
-                    Choose an account to continue to Unjournal.ai
+                    Enter your Google Account to connect to your personal journal
                   </p>
                 </div>
 
@@ -308,82 +310,55 @@ export default function AuthModal() {
                     <span>Requested Permissions: Name & Email Only</span>
                   </div>
                   <p className="text-[11px] text-white/50 leading-relaxed font-body">
-                    Unjournal only requests your basic identity (name, email address, and profile picture). No Google Drive, contacts, or sensitive data will ever be accessed.
+                    Unjournal only requests your basic identity (name and email). Your reflections remain strictly private and isolated.
                   </p>
                 </div>
 
-                {/* Google Accounts List */}
-                <div className="space-y-2">
-                  {/* Real detected Google Account from environment */}
-                  <button
-                    onClick={() => handleSelectGoogleAccount({
-                      email: 'oxygenbittv@gmail.com',
-                      displayName: 'Oxygenbit TV',
-                      photoURL: 'https://lh3.googleusercontent.com/a-/ALV-UjWyRc51Fg22B9XRkpyMxkQN60LjSi-6GQFFXxmApwXOcxSB6w=s96-c'
-                    })}
-                    className="w-full p-3.5 rounded-2xl liquid-glass-strong hover:bg-white/10 border border-white/15 hover:border-white/30 transition-all flex items-center justify-between text-left group"
-                  >
-                    <div className="flex items-center gap-3">
-                      <img
-                        src="https://lh3.googleusercontent.com/a-/ALV-UjWyRc51Fg22B9XRkpyMxkQN60LjSi-6GQFFXxmApwXOcxSB6w=s96-c"
-                        alt="Google Account Avatar"
-                        className="w-10 h-10 rounded-full border border-white/20 object-cover"
-                      />
-                      <div>
-                        <div className="text-sm font-medium text-white group-hover:text-emerald-300 transition-colors">
-                          Oxygenbit TV
-                        </div>
-                        <div className="text-xs text-white/50">
-                          oxygenbittv@gmail.com
-                        </div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-mono-journal text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-full border border-emerald-400/20">
-                      CURRENT
-                    </span>
-                  </button>
+                {/* Form to enter Google Account */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!customGoogleEmail.trim()) return;
+                    handleSelectGoogleAccount({
+                      email: customGoogleEmail.trim(),
+                      displayName: customGoogleName.trim() || customGoogleEmail.split('@')[0],
+                      photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${customGoogleName.trim() || customGoogleEmail.trim()}`
+                    });
+                  }}
+                  className="space-y-3.5 text-left"
+                >
+                  <div>
+                    <label className="text-[11px] font-body uppercase text-white/60 mb-1 block">Full Name</label>
+                    <input
+                      type="text"
+                      value={customGoogleName}
+                      onChange={(e) => setCustomGoogleName(e.target.value)}
+                      placeholder="Your Full Name"
+                      className="w-full liquid-glass-strong rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/30 focus:outline-none font-body border border-white/15 focus:border-white/40 transition-colors"
+                    />
+                  </div>
 
-                  {/* Toggle Custom Google Account */}
-                  {!isUsingCustomAccount ? (
-                    <button
-                      onClick={() => setIsUsingCustomAccount(true)}
-                      className="w-full p-3 rounded-xl border border-dashed border-white/20 hover:border-white/40 text-xs text-white/70 hover:text-white transition-all text-center font-body"
-                    >
-                      + Use another Google account
-                    </button>
-                  ) : (
-                    <div className="p-3.5 rounded-2xl bg-white/5 border border-white/15 space-y-2.5 text-left animate-in fade-in">
-                      <div className="text-[11px] uppercase font-mono-journal text-white/50">
-                        Enter Google Account Details
-                      </div>
-                      <input
-                        type="text"
-                        value={customGoogleName}
-                        onChange={(e) => setCustomGoogleName(e.target.value)}
-                        placeholder="Your Full Name"
-                        className="w-full liquid-glass-strong rounded-xl px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none font-body"
-                      />
-                      <input
-                        type="email"
-                        value={customGoogleEmail}
-                        onChange={(e) => setCustomGoogleEmail(e.target.value)}
-                        placeholder="yourname@gmail.com"
-                        className="w-full liquid-glass-strong rounded-xl px-3 py-2 text-xs text-white placeholder-white/30 focus:outline-none font-body"
-                      />
-                      <button
-                        onClick={() => handleSelectGoogleAccount({
-                          email: customGoogleEmail.trim() || 'user@gmail.com',
-                          displayName: customGoogleName.trim() || 'Google Journaler',
-                          photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${customGoogleName || 'User'}`
-                        })}
-                        disabled={!customGoogleEmail.trim()}
-                        className="w-full bg-white text-black rounded-xl py-2 text-xs font-semibold hover:bg-white/90 disabled:opacity-30 transition-all font-body"
-                      >
-                        Select Account →
-                      </button>
-                    </div>
-                  )}
-                </div>
+                  <div>
+                    <label className="text-[11px] font-body uppercase text-white/60 mb-1 block">Google Account Email</label>
+                    <input
+                      type="email"
+                      value={customGoogleEmail}
+                      onChange={(e) => setCustomGoogleEmail(e.target.value)}
+                      placeholder="you@gmail.com"
+                      required
+                      className="w-full liquid-glass-strong rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/30 focus:outline-none font-body border border-white/15 focus:border-white/40 transition-colors"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={!customGoogleEmail.trim()}
+                    className="w-full bg-white text-black rounded-full h-11 text-xs font-semibold hover:bg-white/90 disabled:opacity-30 transition-all font-body flex items-center justify-center gap-2 shadow-lg mt-2"
+                  >
+                    <span>Continue to Permission Step</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </form>
               </>
             ) : (
               /* Step 2: Device Permissions Consent (Microphone, Location, Photos) */
