@@ -11,7 +11,7 @@
   }
 
   body {
-    @apply bg-[#000000] text-[#FFFFFF] antialiased selection:bg-[#EB0029] selection:text-[#FFFFFF];
+    @apply bg-[#000000] text-[#FFFFFF] antialiased selection:bg-white/30 selection:text-[#FFFFFF];
     font-family: 'Barlow', 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

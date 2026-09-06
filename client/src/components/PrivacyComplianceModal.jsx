@@ -141,7 +141,7 @@ export default function PrivacyComplianceModal({
           <button
             onClick={() => setActiveTab('purge')}
             className={`flex-1 py-2 rounded-lg font-medium transition-all flex items-center justify-center gap-1.5 ${
-              activeTab === 'purge' ? 'bg-rose-500/20 text-rose-300 shadow' : 'text-white/60 hover:text-rose-400'
+              activeTab === 'purge' ? 'bg-white/15 text-white shadow' : 'text-white/60 hover:text-white'
             }`}
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -239,7 +239,7 @@ export default function PrivacyComplianceModal({
         {/* Tab 3: Right to be Forgotten (Purge) */}
         {activeTab === 'purge' && (
           <div className="space-y-4 text-xs">
-            <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-300 space-y-1">
+            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/15 text-white/70 space-y-1">
               <div className="font-semibold flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4" />
                 <span>Permanent Irreversible Action</span>
@@ -258,14 +258,14 @@ export default function PrivacyComplianceModal({
                 value={purgeConfirmText}
                 onChange={(e) => setPurgeConfirmText(e.target.value)}
                 placeholder="DELETE ALL"
-                className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-rose-500/30 text-white placeholder-white/20 text-xs focus:outline-none focus:border-rose-500"
+                className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/25 text-white placeholder-white/20 text-xs focus:outline-none focus:border-white/50"
               />
             </div>
 
             <button
               onClick={handlePurgeAllData}
               disabled={isPurging || purgeConfirmText !== 'DELETE ALL'}
-              className="w-full py-3 rounded-2xl bg-rose-600 text-white font-semibold text-xs hover:bg-rose-500 disabled:opacity-40 disabled:pointer-events-none transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-950/40"
+              className="w-full py-3 rounded-2xl bg-white text-black font-semibold text-xs hover:bg-white/90 disabled:opacity-40 disabled:pointer-events-none transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/40"
             >
               <Trash2 className="w-4 h-4" />
               <span>{isPurging ? 'Purging Firestore Database...' : 'Permanently Purge All Data'}</span>

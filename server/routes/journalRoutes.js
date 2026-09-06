@@ -124,6 +124,7 @@ router.post('/briefing/generate', requireAuth, async (req, res) => {
 ${recentSummaries || 'User is starting their mindfulness journey.'}
 
 Generate a punchy, uplifting, and highly strategic 60-second morning audio briefing script.
+Ground every claim strictly in the supplied entries below. Never invent events, dates, quotes, or patterns; if the material is thin, say so briefly instead.
 Output MUST be JSON:
 {
   "headline": "Morning Cognitive Anchor (3-5 words)",
@@ -182,6 +183,107 @@ Output MUST be JSON:
         ],
         readiness_score: 94
       }
+    });
+  }
+});
+
+const digestCache = new Map();
+
+/**
+ * Extractive yesterday-digest used when no AI key is available,
+ * so the morning loop works fully in demo mode.
+ */
+function buildExtractiveDigest(yesterday = []) {
+  const items = yesterday.map((j) => ({
+    title: j.title || 'Untitled reflection',
+    summary: j.summary || ''
+  }));
+  const events = items.map((t) => t.title).filter(Boolean).slice(0, 5);
+  const conclusions = items.map((t) => t.summary).filter((s) => s && s.length > 4).slice(0, 3);
+  const carryovers = items.slice(0, 3).map((t) => `Follow up on: ${t.title}`);
+  const lead = events[0] || 'your reflections';
+  const count = yesterday.length;
+  const script = `Good morning. Yesterday you recorded ${count} reflection${count === 1 ? '' : 's'}${events.length ? `, including ${events.slice(0, 2).join(' and ')}` : ''}. ${conclusions[0] ? `The main takeaway was ${conclusions[0].substring(0, 140)}.` : 'No single takeaway stood out.'} ${carryovers[0] ? `${carryovers[0]}.` : ''} So — what are today's events?`;
+  return {
+    dateScope: 'yesterday',
+    entryCount: count,
+    events,
+    conclusions,
+    carryovers,
+    spoken_audio_script: script,
+    today_opener: `Let's begin today. Carrying over from yesterday: ${carryovers[0] || lead}. Ask me what today's events are.`
+  };
+}
+
+/**
+ * POST /api/digest/generate
+ * Yesterday → today loop: yesterday's events, conclusions, carryovers,
+ * a 60-second spoken script, and an opener question for today.
+ */
+router.post('/digest/generate', requireAuth, async (req, res) => {
+  try {
+    const { yesterday = [], todayCount = 0 } = req.body;
+    const userId = req.user?.uid || 'anonymous';
+    const sig = yesterday.map((j) => j.id || j.updatedAt || j.createdAt || '').join('|');
+    const cacheKey = `${userId}_digest_${yesterday.length}_${sig.length}_${sig.slice(0, 48)}`;
+
+    const now = Date.now();
+    const cached = digestCache.get(cacheKey);
+    if (cached && (now - cached.timestamp < 30 * 60 * 1000)) {
+      return res.json({ success: true, data: cached.data, cached: true });
+    }
+
+    const { getGeminiApiKey } = await import('../services/secretManager.js');
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+
+    const apiKey = await getGeminiApiKey();
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const candidateModels = ['gemini-flash-lite-latest', 'gemini-3.7-flash', 'gemini-flash-latest', 'gemini-3.5-flash'];
+
+    const material = yesterday.slice(0, 8).map((j) => {
+      const userBits = (j.conversation || []).filter((c) => c.role === 'user').map((c) => c.content).join('\n');
+      const modelBits = (j.conversation || []).filter((c) => c.role === 'model').map((c) => c.content).join('\n');
+      return `Title: ${j.title}\nSummary: ${j.summary}\nUser said: ${userBits.substring(0, 800)}\nAssistant concluded: ${modelBits.substring(0, 800)}`;
+    }).join('\n---\n');
+
+    const prompt = `You are the user's morning journal companion. Yesterday's reflections:\n${material || 'No entries yesterday.'}\n\nThe user already has ${todayCount} entr${todayCount === 1 ? 'y' : 'ies'} today. Output MUST be JSON: {"events": ["3-5 concrete things the user did or discussed yesterday"], "conclusions": ["2-3 conclusions or insights reached"], "carryovers": ["1-3 open loops to carry into today"], "spoken_audio_script": "Warm conversational 60-second recap under 120 words, ending by asking what today's events are.", "today_opener": "One short question to open today's check-in. Use ONLY the supplied entries — never invent events, dates, quotes, or patterns; if there is too little material, say so."}`;
+
+    let parsed = null;
+    for (const modelName of candidateModels) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: { temperature: 0.7, responseMimeType: 'application/json' }
+        });
+        const result = await model.generateContent(prompt);
+        parsed = JSON.parse((await result.response).text());
+        break;
+      } catch (genErr) {
+        console.warn(`[Route /api/digest/generate] Model ${modelName} failed:`, genErr.message);
+      }
+    }
+
+    if (!parsed) {
+      throw new Error('Digest generation failed on all models');
+    }
+
+    const data = {
+      dateScope: 'yesterday',
+      entryCount: yesterday.length,
+      events: parsed.events || [],
+      conclusions: parsed.conclusions || [],
+      carryovers: parsed.carryovers || [],
+      spoken_audio_script: parsed.spoken_audio_script || '',
+      today_opener: parsed.today_opener || "What are today's events?"
+    };
+    digestCache.set(cacheKey, { data, timestamp: now });
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error('[Route /api/digest/generate] Error:', error.message);
+    return res.json({
+      success: true,
+      data: buildExtractiveDigest(req.body?.yesterday || []),
+      fallback: true
     });
   }
 });

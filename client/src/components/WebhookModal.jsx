@@ -133,7 +133,7 @@ export default function WebhookModal({ isOpen, onClose, briefing = null, journal
           <div className={`p-3 rounded-xl text-xs border ${
             status.success
               ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
-              : 'bg-red-500/10 border-red-500/20 text-red-300'
+              : 'bg-white/10 border-white/20 text-white/70'
           }`}>
             {status.message}
           </div>
