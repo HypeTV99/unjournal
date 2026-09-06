@@ -68,7 +68,7 @@ export default function EpiphanyMapModal({ isOpen, onClose, journals = [] }) {
         className="fixed top-20 left-1/2 z-50 w-[92vw] max-w-xl md:max-w-2xl h-[540px] max-h-[70vh] liquid-glass-strong rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-teardrop font-body border border-white/20 select-none"
         role="dialog"
         aria-modal="true"
-        aria-label="Epiphany Maps"
+        aria-label="Maps"
       >
         {/* Top Droplet Accent */}
         <div className="w-12 h-1 bg-white/40 rounded-full mx-auto mt-2.5 opacity-60" />
@@ -81,7 +81,7 @@ export default function EpiphanyMapModal({ isOpen, onClose, journals = [] }) {
             </div>
             <div>
               <h2 className="font-heading italic text-xl text-white tracking-tight leading-none">
-                Epiphany Maps
+                Maps
               </h2>
               <p className="text-[11px] font-body text-white/50 mt-0.5">
                 Where your thoughts and reflections took place

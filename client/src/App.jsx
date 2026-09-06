@@ -91,7 +91,6 @@ export default function App() {
     try {
       const records = await fetchUserJournals(user.uid);
       setJournals(records);
-      setMessages([]);
     } catch (err) {
       console.error('Failed to load journals:', err);
     }
@@ -104,14 +103,6 @@ export default function App() {
       mainScrollRef.current.scrollTop = 0;
     }
   }, [messages, isSending]);
-
-  const tickerIntervalRef = useRef(null);
-
-  useEffect(() => {
-    return () => {
-      if (tickerIntervalRef.current) clearInterval(tickerIntervalRef.current);
-    };
-  }, []);
 
   const handlePhotoAttachment = async (e) => {
     const file = e.target.files?.[0];
@@ -153,11 +144,6 @@ export default function App() {
       setAttachedPhoto(null);
     }
 
-    if (tickerIntervalRef.current) {
-      clearInterval(tickerIntervalRef.current);
-      tickerIntervalRef.current = null;
-    }
-
     const userMsg = {
       role: 'user',
       content: textToSend.trim(),
@@ -178,80 +164,7 @@ export default function App() {
 
     let streamStarted = false;
     let accumulatedText = '';
-    let displayedText = '';
-    let streamComplete = false;
     let modelMeta = {};
-
-    // Start progressive word-by-word ticker (ramped up for snappy delivery)
-    const startTicker = () => {
-      if (tickerIntervalRef.current) return;
-      tickerIntervalRef.current = setInterval(() => {
-        const remaining = accumulatedText.slice(displayedText.length);
-
-        if (remaining.length > 0) {
-          // Adaptive high-speed cadence: 1-2 words normally, 3-5 words if backlog is large, rapid flush if stream complete
-          let step = 1;
-          if (streamComplete) {
-            step = 6;
-          } else if (remaining.length > 60) {
-            step = 4;
-          } else if (remaining.length > 20) {
-            step = 2;
-          }
-
-          let count = 0;
-          let advanceIdx = 0;
-          while (advanceIdx < remaining.length && count < step) {
-            if (/\s/.test(remaining[advanceIdx])) {
-              while (advanceIdx < remaining.length && /\s/.test(remaining[advanceIdx])) {
-                advanceIdx++;
-              }
-              count++;
-            } else {
-              advanceIdx++;
-            }
-          }
-
-          if (advanceIdx === 0) {
-            advanceIdx = streamComplete ? remaining.length : Math.min(remaining.length, 5);
-          }
-
-          displayedText += remaining.slice(0, advanceIdx);
-
-          setMessages(prev => {
-            const list = [...prev];
-            const last = list[list.length - 1];
-            if (last && last.role === 'model') {
-              list[list.length - 1] = {
-                ...last,
-                content: displayedText,
-                ...modelMeta
-              };
-            }
-            return list;
-          });
-        } else if (streamComplete) {
-          // All words drained and stream finished
-          clearInterval(tickerIntervalRef.current);
-          tickerIntervalRef.current = null;
-          setIsSending(false);
-
-          const finalMsg = {
-            role: 'model',
-            content: displayedText,
-            memoryAttached: modelMeta.memoryAttached,
-            isSemanticRetrospection: modelMeta.isSemanticRetrospection,
-            modelUsed: modelMeta.modelUsed,
-            timestamp: modelMeta.timestamp || new Date().toISOString()
-          };
-          const finalHistory = [...updatedHistory, finalMsg];
-          setMessages(finalHistory);
-          silentBackgroundSave(finalHistory);
-        }
-      }, 14);
-    };
-
-    startTicker();
 
     try {
       const response = await sendChatMessageStream({
@@ -270,43 +183,56 @@ export default function App() {
         },
         onChunk: (fullText) => {
           accumulatedText = cleanAIText(fullText);
+          setMessages(prev => {
+            const list = [...prev];
+            const last = list[list.length - 1];
+            if (last && last.role === 'model') {
+              list[list.length - 1] = {
+                ...last,
+                content: accumulatedText,
+                ...modelMeta
+              };
+            }
+            return list;
+          });
         }
       });
 
-      streamComplete = true;
-      accumulatedText = cleanAIText(response.reply || accumulatedText);
-      modelMeta = {
-        ...modelMeta,
+      const finalContent = cleanAIText(response.reply || accumulatedText);
+      const finalMsg = {
+        role: 'model',
+        content: finalContent,
+        memoryAttached: modelMeta.memoryAttached,
+        isSemanticRetrospection: modelMeta.isSemanticRetrospection,
         modelUsed: response.modelUsed || modelMeta.modelUsed,
-        timestamp: response.timestamp || modelMeta.timestamp
+        timestamp: response.timestamp || modelMeta.timestamp || new Date().toISOString()
       };
+      const finalHistory = [...updatedHistory, finalMsg];
+      setMessages(finalHistory);
+      setIsSending(false);
+      silentBackgroundSave(finalHistory);
     } catch (err) {
       console.error('Chat error:', err);
-      if (tickerIntervalRef.current) {
-        clearInterval(tickerIntervalRef.current);
-        tickerIntervalRef.current = null;
-      }
       setIsSending(false);
 
-      if (!streamStarted || !displayedText) {
-        setMessages(prev => {
-          const list = [...prev];
-          const last = list[list.length - 1];
-          if (last && last.role === 'model') {
-            list[list.length - 1] = {
-              role: 'model',
-              content: `I am reflecting with you. What feels like the most important part of this to focus on right now?`,
-              timestamp: new Date().toISOString()
-            };
-          }
-          return list;
-        });
-      }
+      setMessages(prev => {
+        const list = [...prev];
+        const last = list[list.length - 1];
+        if (last && last.role === 'model' && !last.content) {
+          list[list.length - 1] = {
+            role: 'model',
+            content: `I am reflecting with you. What feels like the most important part of this to focus on right now?`,
+            timestamp: new Date().toISOString()
+          };
+        }
+        return list;
+      });
     }
   };
 
   // Silent Background Auto-Save (Zero user clicks needed)
   const silentBackgroundSave = async (conversation) => {
+    if (!user?.uid || !conversation || conversation.length === 0) return;
     setIsSaving(true);
     try {
       const currentEntryId = activeJournalId || `journal_${Date.now()}`;
@@ -345,6 +271,17 @@ export default function App() {
 
       await saveJournalEntry(user.uid, entry);
       if (!activeJournalId) setActiveJournalId(currentEntryId);
+
+      // Keep local state in sync without re-fetching or wiping messages
+      setJournals(prev => {
+        const idx = prev.findIndex(j => j.id === currentEntryId);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = entry;
+          return updated;
+        }
+        return [entry, ...prev];
+      });
     } catch (e) {
       console.warn('Silent save notice:', e);
     } finally {
@@ -358,11 +295,8 @@ export default function App() {
     handleSendMessage(opener);
   };
 
-  const handleStartNewSession = () => {
-    if (tickerIntervalRef.current) {
-      clearInterval(tickerIntervalRef.current);
-      tickerIntervalRef.current = null;
-    }
+  const handleStartNewSession = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
     setActiveJournalId(null);
     setMessages([]);
     setShowHistoryDrawer(false);
@@ -589,7 +523,33 @@ export default function App() {
 
       {/* Ambient Background Video with gradient scrim */}
       <div className="ambient-bg" aria-hidden="true">
-        <video autoPlay muted loop playsInline tabIndex={-1} preload="auto">
+        <video
+          ref={(el) => {
+            if (el) {
+              el.muted = true;
+              el.defaultMuted = true;
+              const p = el.play();
+              if (p !== undefined) {
+                p.catch(() => {
+                  const kickstart = () => {
+                    el.play().catch(() => {});
+                    window.removeEventListener('pointerdown', kickstart);
+                    window.removeEventListener('keydown', kickstart);
+                  };
+                  window.addEventListener('pointerdown', kickstart, { once: true });
+                  window.addEventListener('keydown', kickstart, { once: true });
+                });
+              }
+            }
+          }}
+          src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260818_072341_50851634-bbc3-4c33-9acc-7647d4db44aa.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
+          tabIndex={-1}
+          preload="auto"
+        >
           <source src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260818_072341_50851634-bbc3-4c33-9acc-7647d4db44aa.mp4" type="video/mp4" />
         </video>
       </div>
@@ -612,37 +572,34 @@ export default function App() {
         </div>
 
         {/* Center — Liquid-Glass Navigation Buttons matching Main Page UI/UX and Text Style */}
-        <nav className="hidden md:flex items-center gap-3" aria-label="Primary">
+        <nav className="flex items-center gap-1.5 sm:gap-3" aria-label="Primary">
           <BorderBeam size="sm" colorVariant="mono" strength={0.5} theme="dark">
             <button
               onClick={() => setIsEpiphanyMapModalOpen(true)}
-              className="liquid-glass-strong text-xs px-4 py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 font-body shadow-lg"
-              title="Epiphany Horizon Maps"
+              className="liquid-glass-strong text-[11px] sm:text-xs px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all flex items-center font-body shadow-lg whitespace-nowrap"
+              title="Maps"
             >
-              <Compass className="w-3.5 h-3.5 text-white/70" />
-              <span>Epiphany Maps</span>
+              <span>Maps</span>
             </button>
           </BorderBeam>
 
           <BorderBeam size="sm" colorVariant="mono" strength={0.5} theme="dark">
             <button
               onClick={() => setIsBriefingModalOpen(true)}
-              className="liquid-glass-strong text-xs px-4 py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 font-body shadow-lg"
-              title="60s Morning Spoken Briefing"
+              className="liquid-glass-strong text-[11px] sm:text-xs px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all flex items-center font-body shadow-lg whitespace-nowrap"
+              title="60 Seconds"
             >
-              <Radio className="w-3.5 h-3.5 text-white/70" />
-              <span>60s Podcast</span>
+              <span>60 seconds</span>
             </button>
           </BorderBeam>
 
           <BorderBeam size="sm" colorVariant="mono" strength={0.5} theme="dark">
             <button
               onClick={() => setShowHistoryDrawer(!showHistoryDrawer)}
-              className="liquid-glass-strong text-xs px-4 py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 font-body shadow-lg"
-              title="Past Reflections History"
+              className="liquid-glass-strong text-[11px] sm:text-xs px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all flex items-center font-body shadow-lg whitespace-nowrap"
+              title="Past Reflections"
             >
-              <History className="w-3.5 h-3.5 text-white/70" />
-              <span>Reflections ({journals.length})</span>
+              <span>Reflections</span>
             </button>
           </BorderBeam>
         </nav>
@@ -697,12 +654,9 @@ export default function App() {
                         setIsEpiphanyMapModalOpen(true);
                         setShowMenu(false);
                       }}
-                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10 text-white/90 hover:text-white transition-all flex items-center gap-2.5 font-body group"
+                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10 text-white/90 hover:text-white transition-all flex items-center font-body group"
                     >
-                      <div className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-white/70 group-hover:text-white group-hover:bg-white/10 transition-all flex-shrink-0">
-                        <Compass className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="font-medium">Epiphany Maps</span>
+                      <span className="font-medium">Maps</span>
                     </button>
 
                     <button
@@ -710,12 +664,9 @@ export default function App() {
                         setIsBriefingModalOpen(true);
                         setShowMenu(false);
                       }}
-                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10 text-white/90 hover:text-white transition-all flex items-center gap-2.5 font-body group"
+                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10 text-white/90 hover:text-white transition-all flex items-center font-body group"
                     >
-                      <div className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-white/70 group-hover:text-white group-hover:bg-white/10 transition-all flex-shrink-0">
-                        <Radio className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="font-medium">60s Podcast</span>
+                      <span className="font-medium">60 seconds</span>
                     </button>
 
                     <button
@@ -723,12 +674,9 @@ export default function App() {
                         setShowHistoryDrawer(true);
                         setShowMenu(false);
                       }}
-                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10 text-white/90 hover:text-white transition-all flex items-center gap-2.5 font-body group"
+                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/10 text-white/90 hover:text-white transition-all flex items-center font-body group"
                     >
-                      <div className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-white/70 group-hover:text-white group-hover:bg-white/10 transition-all flex-shrink-0">
-                        <History className="w-3.5 h-3.5" />
-                      </div>
-                      <span className="font-medium">Reflections ({journals.length})</span>
+                      <span className="font-medium">Reflections</span>
                     </button>
                   </div>
 
@@ -820,23 +768,23 @@ export default function App() {
 
       {/* Main Conversation & Reflection Canvas */}
       <div className="flex-1 flex overflow-hidden relative z-10">
-        <main ref={mainScrollRef} className="flex-1 overflow-y-auto px-4 sm:px-8 py-8 flex flex-col items-center">
-          <div className="w-full max-w-2xl space-y-6">
+        <main ref={mainScrollRef} className="flex-1 overflow-y-auto px-4 sm:px-8 py-3 sm:py-6 flex flex-col items-center">
+          <div className="w-full max-w-2xl space-y-4">
             {/* Empty state: V2 Typography and Glass Button prompts */}
             {messages.length === 0 && (
-              <div className="w-full flex flex-col items-center text-center select-none space-y-5 pt-1 sm:pt-2 pb-10 my-0">
+              <div className="w-full flex flex-col items-center text-center select-none space-y-4 pt-1 sm:pt-2 pb-6 my-auto">
                 {/* Hero: sentence wrapped around a centered mic */}
-                <h1 className="text-5xl md:text-6xl lg:text-7xl font-heading italic text-white tracking-tight leading-[1.1] max-w-3xl mx-auto">
+                <h1 className="text-4xl sm:text-5xl md:text-6xl font-heading italic text-white tracking-tight leading-[1.08] max-w-2xl mx-auto">
                   <span className="block">What is on your</span>
-                  <span className="inline-flex my-4 sm:my-5 not-italic">
+                  <span className="inline-flex my-2.5 sm:my-3.5 not-italic">
                     <BorderBeam size="md" colorVariant="ocean" strength={0.6} theme="dark">
                       <button
                         type="button"
                         onClick={toggleVoiceRecording}
-                        className="w-24 h-24 rounded-full liquid-glass-strong text-white hover:bg-white/10 inline-flex items-center justify-center transition-all shadow-2xl"
+                        className="w-20 h-20 sm:w-24 sm:h-24 rounded-full liquid-glass-strong text-white hover:bg-white/10 inline-flex items-center justify-center transition-all shadow-2xl hover:scale-105"
                         title="Speak your reflection"
                       >
-                        <Mic className="w-10 h-10" />
+                        <Mic className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
                       </button>
                     </BorderBeam>
                   </span>
@@ -852,7 +800,7 @@ export default function App() {
                         className="liquid-glass-strong text-xs px-5 py-3 rounded-full text-white hover:bg-white/10 transition-all flex items-center gap-2 font-body shadow-lg"
                       >
                         <Sunrise className="w-4 h-4 text-white/80" />
-                        <span>Yesterday's recap is ready — {yesterdayEntries.length} reflection{yesterdayEntries.length === 1 ? '' : 's'} · 60s listen</span>
+                        <span>Yesterday's recap is ready · 60 seconds listen</span>
                       </button>
                     </BorderBeam>
                   </div>
@@ -869,7 +817,7 @@ export default function App() {
                     <BorderBeam key={pIdx} size="md" colorVariant="mono" strength={0.4} theme="dark" className="rounded-full">
                       <button
                         onClick={() => handleSendMessage(prompt)}
-                        className="liquid-glass-strong text-xs px-4 py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all text-center font-body shadow-lg"
+                        className="liquid-glass-strong text-xs px-4 py-2 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-all font-body shadow-md"
                       >
                         → {prompt}
                       </button>

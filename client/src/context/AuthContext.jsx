@@ -51,11 +51,30 @@ export function AuthProvider({ children }) {
         setIdToken(token);
         setIsDemoMode(false);
       } else {
-        // If not authenticated via Firebase and no saved session exists
+        // If not authenticated via Firebase and no saved session exists, auto-provision guest session
         const stored = localStorage.getItem('gemini_journal_demo_user');
-        if (!stored) {
-          setUser(null);
-          setIdToken(null);
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            setUser(parsed);
+            setIdToken(parsed.provider === 'google.com' ? `google_token_${parsed.uid}` : `dev_token_${parsed.uid}`);
+            setIsDemoMode(true);
+          } catch (e) {
+            localStorage.removeItem('gemini_journal_demo_user');
+          }
+        } else {
+          const guest = {
+            uid: `guest_${Math.random().toString(36).substring(2, 8)}`,
+            email: 'guest@unjournal.ai',
+            displayName: 'Guest Explorer',
+            photoURL: null,
+            isAnonymous: true,
+            isDemo: true
+          };
+          localStorage.setItem('gemini_journal_demo_user', JSON.stringify(guest));
+          setUser(guest);
+          setIdToken(`dev_token_${guest.uid}`);
+          setIsDemoMode(true);
         }
       }
       setLoading(false);
