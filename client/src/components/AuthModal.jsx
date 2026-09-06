@@ -27,25 +27,11 @@ export default function AuthModal() {
   const [showGoogleConsent, setShowGoogleConsent] = useState(false);
   const [googleEmailInput, setGoogleEmailInput] = useState('');
 
-  // 1-Click Simple Google Sign-In
-  const handleGoogleAuth = async () => {
+  // 1-Click Simple Google Sign-In with Permission Consent
+  const handleGoogleAuth = () => {
     setError('');
-    setLoading(true);
-
-    try {
-      // First attempt native Firebase Google Auth popup
-      const user = await loginWithGoogle();
-      if (user) {
-        await requestJournalPermissions();
-        return;
-      }
-    } catch (err) {
-      console.warn('[Auth] Native popup not configured, showing Google permission consent flow:', err.message);
-      // Open clean, authentic Google Account Permission Consent dialog
-      setShowGoogleConsent(true);
-    } finally {
-      setLoading(false);
-    }
+    // Open clean Google Account Permission Consent dialog directly
+    setShowGoogleConsent(true);
   };
 
   const handleConfirmGooglePermissions = async () => {
