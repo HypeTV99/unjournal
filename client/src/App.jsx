@@ -554,17 +554,17 @@ export default function App() {
         </video>
       </div>
 
-      {/* Top Header (3-Column Liquid Grid with V2 Glass Buttons & Typography) */}
-      <header className="h-16 px-6 sm:px-10 border-b border-white/10 bg-black/40 backdrop-blur-md flex items-center justify-between z-30 select-none">
+      {/* Top Header (Perfect Central Alignment with V2 Glass Buttons & Typography) */}
+      <header className="h-16 px-6 sm:px-10 border-b border-white/10 bg-black/40 backdrop-blur-md relative flex items-center justify-between z-30 select-none">
         {/* Left — Logo in Instrument Serif */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 z-10">
           <a href="#" onClick={handleStartNewSession} className="inline-flex items-center tracking-tight text-white hover:opacity-90 transition-opacity">
             <span className="font-heading italic text-2xl tracking-normal">unjournal</span>
           </a>
         </div>
 
-        {/* Center — Liquid-Glass Navigation Buttons matching Main Page UI/UX and Text Style */}
-        <nav className="flex items-center gap-1.5 sm:gap-3" aria-label="Primary">
+        {/* Center — Precisely centered along the central line of the page */}
+        <nav className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5 sm:gap-3 z-10" aria-label="Primary">
           <BorderBeam size="sm" colorVariant="mono" strength={0.5} theme="dark">
             <button
               onClick={() => setIsEpiphanyMapModalOpen(true)}
@@ -597,7 +597,7 @@ export default function App() {
         </nav>
 
         {/* Right — Actions with Matching Glass Buttons & Typography */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 z-10">
           <BorderBeam size="md" colorVariant="mono" strength={0.6} theme="dark">
             <button
               onClick={handleStartNewSession}
