@@ -145,16 +145,8 @@ export default function AuthModal() {
 
       {/* Header */}
       <header className="h-16 px-6 sm:px-10 border-b border-white/10 bg-black/40 backdrop-blur-md flex items-center justify-between z-30 select-none">
-        <div className="flex items-center gap-2.5">
-          <svg className="w-[22px] h-[22px] text-white" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <g transform="rotate(-30 12 12)">
-              <circle cx="7.3" cy="3.2" r="1.45" />
-              <rect x="5.5" y="4.7" width="3.6" height="14.6" rx="1.8" />
-              <rect x="14.9" y="4.7" width="3.6" height="14.6" rx="1.8" />
-              <circle cx="16.7" cy="20.8" r="1.45" />
-            </g>
-          </svg>
-          <span className="font-heading italic text-xl tracking-normal">Unjournal<span className="font-body not-italic text-sm text-white/70 font-normal">.ai</span></span>
+        <div className="flex items-center">
+          <span className="font-heading italic text-2xl tracking-normal text-white">unjournal</span>
         </div>
 
         <button
@@ -168,17 +160,6 @@ export default function AuthModal() {
       {/* Hero / Sign-in Container */}
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6 z-20">
         <div className="w-full max-w-md p-8 sm:p-10 rounded-3xl liquid-glass-strong shadow-2xl space-y-6 text-center">
-          {/* Logo Mark Icon Container */}
-          <div className="mx-auto w-12 h-12 rounded-2xl liquid-glass-strong flex items-center justify-center shadow-lg">
-            <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
-              <g transform="rotate(-30 12 12)">
-                <circle cx="7.3" cy="3.2" r="1.45" />
-                <rect x="5.5" y="4.7" width="3.6" height="14.6" rx="1.8" />
-                <rect x="14.9" y="4.7" width="3.6" height="14.6" rx="1.8" />
-                <circle cx="16.7" cy="20.8" r="1.45" />
-              </g>
-            </svg>
-          </div>
 
           {/* Heading in Instrument Serif Italic (Subtext removed per request) */}
           <div className="space-y-2">
