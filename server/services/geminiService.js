@@ -52,9 +52,11 @@ REFLECTION & OUTPUT:
 - Default shape: observation → reflection → optional single question. Never make high-stakes medical, legal, financial, or safety decisions for the user; help examine options, trade-offs, and priorities instead.`;
 
 const CANDIDATE_CHAT_MODELS = [
-  'gemini-3.1-flash-lite',
-  'gemini-3.1-flash-lite-preview',
-  'gemini-3-flash-preview'
+  'gemini-3.6-flash',
+  'gemini-2.5-flash',
+  'gemini-flash-latest',
+  'gemini-flash-lite-latest',
+  'gemini-3.1-flash-lite'
 ];
 
 let cachedGenAIClient = null;

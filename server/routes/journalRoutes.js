@@ -238,7 +238,14 @@ router.post('/digest/generate', requireAuth, async (req, res) => {
 
     const apiKey = await getGeminiApiKey();
     const genAI = new GoogleGenerativeAI(apiKey);
-    const candidateModels = ['gemini-flash-lite-latest', 'gemini-3.7-flash', 'gemini-flash-latest', 'gemini-3.5-flash'];
+    const candidateModels = [
+      'gemini-3.6-flash',
+      'gemini-2.5-flash',
+      'gemini-flash-latest',
+      'gemini-flash-lite-latest',
+      'gemini-3.7-flash',
+      'gemini-3.5-flash'
+    ];
 
     const material = yesterday.slice(0, 8).map((j) => {
       const userBits = (j.conversation || []).filter((c) => c.role === 'user').map((c) => c.content).join('\n');

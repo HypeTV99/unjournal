@@ -1,0 +1,7 @@
+.gcloudignore
+.git
+node_modules/
+client/node_modules/
+server/node_modules/
+server/public/uploads/*
+!server/public/uploads/.gitkeep

@@ -12,19 +12,9 @@ echo "🏷️  Required Verification Label: dev-tutorial=cloud-run-ai-challenge"
 echo "=================================================================="
 
 # Check for GCP Project ID
-if [ -z "$GOOGLE_CLOUD_PROJECT" ]; then
-  PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
-else
-  PROJECT_ID="$GOOGLE_CLOUD_PROJECT"
-fi
-
-if [ -z "$PROJECT_ID" ]; then
-  echo "❌ Error: Google Cloud Project ID is not set. Run 'gcloud config set project <PROJECT_ID>' first."
-  exit 1
-fi
-
-REGION=${GCP_REGION:-"us-central1"}
-SERVICE_NAME="unjournal-app"
+PROJECT_ID=${GOOGLE_CLOUD_PROJECT:-"unjournal-ai-2026"}
+REGION=${GCP_REGION:-"asia-south1"}
+SERVICE_NAME="unjournal"
 
 echo "📍 Target Project: $PROJECT_ID"
 echo "📍 Target Region:  $REGION"
@@ -47,8 +37,9 @@ gcloud run deploy "$SERVICE_NAME" \
   --project "$PROJECT_ID" \
   --platform managed \
   --allow-unauthenticated \
-  --set-labels "dev-tutorial=cloud-run-ai-challenge" \
-  --set-env-vars "NODE_ENV=production,FIREBASE_PROJECT_ID=$PROJECT_ID"
+  --labels "dev-tutorial=cloud-run-ai-challenge" \
+  --set-env-vars "NODE_ENV=production,FIREBASE_PROJECT_ID=$PROJECT_ID,GCP_PROJECT_ID=$PROJECT_ID,GEMINI_SECRET_NAME=gemini-api-key,GEMINI_SECRET_VERSION=latest" \
+  --quiet
 
 echo "=================================================================="
 echo "✅ Deployment Successful!"
