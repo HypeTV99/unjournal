@@ -107,12 +107,12 @@ export default function JudgeShowcaseModal({ isOpen, onClose }) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#EB0029] animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-[#FFFFFF] animate-pulse" />
             <span className="text-xs uppercase tracking-widest font-bold">
               ( UN ) EVALUATION CRITERIA SHOWCASE // 4 PILLARS
             </span>
           </div>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#141414] text-[#EB0029] border border-[#262626] font-bold">
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#141414] text-[#FFFFFF] border border-[#262626] font-bold">
             JUDGE AUDIT
           </span>
         </div>
@@ -125,11 +125,11 @@ export default function JudgeShowcaseModal({ isOpen, onClose }) {
               onClick={() => setActiveTab(p.id)}
               className={`p-2.5 rounded-xl border text-left transition-all ${
                 activeTab === p.id
-                  ? 'bg-[#141414] border-[#EB0029] text-white'
+                  ? 'bg-[#141414] border-[#FFFFFF] text-white'
                   : 'bg-[#080808] border-[#1C1C1C] text-[#777777] hover:border-[#333333]'
               }`}
             >
-              <div className="text-[9px] text-[#EB0029] font-bold">{p.score}</div>
+              <div className="text-[9px] text-[#FFFFFF] font-bold">{p.score}</div>
               <div className="text-[10px] font-bold truncate mt-0.5">{p.title.split('. ')[1]}</div>
             </button>
           ))}
@@ -145,7 +145,7 @@ export default function JudgeShowcaseModal({ isOpen, onClose }) {
           <div className="space-y-2">
             {currentPillar.highlights.map((h, idx) => (
               <div key={idx} className="flex items-start gap-2 text-xs">
-                <span className="text-[#EB0029] font-bold text-[10px] mt-0.5">●</span>
+                <span className="text-[#FFFFFF] font-bold text-[10px] mt-0.5">●</span>
                 <span className="text-[#CCCCCC] font-sans leading-relaxed">{h}</span>
               </div>
             ))}
@@ -159,9 +159,9 @@ export default function JudgeShowcaseModal({ isOpen, onClose }) {
             <button
               onClick={runLiveDiagnostics}
               disabled={runningDiag}
-              className="px-2 py-0.5 rounded-full border border-[#262626] bg-[#141414] text-white hover:border-[#EB0029] flex items-center gap-1 text-[9px]"
+              className="px-2 py-0.5 rounded-full border border-[#262626] bg-[#141414] text-white hover:border-[#FFFFFF] flex items-center gap-1 text-[9px]"
             >
-              <Activity className="w-2.5 h-2.5 text-[#EB0029]" />
+              <Activity className="w-2.5 h-2.5 text-[#FFFFFF]" />
               <span>{runningDiag ? 'CHECKING...' : 'LIVE PING'}</span>
             </button>
           </div>
@@ -169,7 +169,7 @@ export default function JudgeShowcaseModal({ isOpen, onClose }) {
           {diagResult && (
             <div className="p-2.5 rounded-lg bg-[#050505] border border-[#141414] text-[10px] font-mono-nothing text-[#888888] space-y-1">
               <div>PROJECT: <span className="text-white">{diagResult.project}</span></div>
-              <div>DEPLOY LABEL: <span className="text-[#EB0029]">{diagResult.deploymentLabel || 'dev-tutorial=cloud-run-ai-challenge'}</span></div>
+              <div>DEPLOY LABEL: <span className="text-[#FFFFFF]">{diagResult.deploymentLabel || 'dev-tutorial=cloud-run-ai-challenge'}</span></div>
               <div>SECURITY DIRECTIVES: <span className="text-white">{diagResult.securityDirectives}</span></div>
               <div>STATUS: <span className="text-white font-bold">100% OPERATIONAL</span></div>
             </div>

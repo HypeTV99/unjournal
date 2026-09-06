@@ -106,7 +106,7 @@ export default function AuthModal() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-black text-white selection:bg-[#EB0029] selection:text-white font-body overflow-hidden relative">
+    <div className="min-h-screen flex flex-col bg-black text-white selection:bg-white/30 selection:text-white font-body overflow-hidden relative">
       {/* Grain Layer */}
       <div className="grain" aria-hidden="true"></div>
 
@@ -178,7 +178,7 @@ export default function AuthModal() {
             </button>
 
             {error && (
-              <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-300 text-xs text-left font-body">
+              <div className="p-3 rounded-2xl bg-white/10 border border-white/20 text-white/70 text-xs text-left font-body">
                 {error}
               </div>
             )}

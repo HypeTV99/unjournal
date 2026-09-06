@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Mic, 
   MicOff, 
@@ -14,10 +14,14 @@ import {
   Share2,
   Activity,
   Shield,
+  Sunrise,
   LogOut,
   Image as ImageIcon
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { ThinkingOrb } from 'thinking-orbs';
+import { BorderBeam } from 'border-beam';
+import { dayKey, getYesterdayKey, filterByDay } from './services/digestService';
 import { useAuth } from './context/AuthContext';
 import { fetchUserJournals, saveJournalEntry, deleteUserJournal } from './services/firestoreService';
 import { sendChatMessage, sendChatMessageStream } from './services/api';
@@ -36,10 +40,15 @@ export default function App() {
 
   const [journals, setJournals] = useState([]);
   const [activeJournalId, setActiveJournalId] = useState(null);
+
+  // Morning loop: yesterday's entries feed today's recap
+  const yesterdayEntries = useMemo(() => filterByDay(journals, getYesterdayKey()), [journals]);
+  const hasTodayEntries = useMemo(() => filterByDay(journals, dayKey()).length > 0, [journals]);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [micError, setMicError] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -54,8 +63,7 @@ export default function App() {
   const [isEpiphanyMapModalOpen, setIsEpiphanyMapModalOpen] = useState(false);
   const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
 
-  const chatBottomRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
+  const chatBottomRef = useRef(null);  const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recognitionRef = useRef(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -335,6 +343,12 @@ export default function App() {
     }
   };
 
+  const handleBeginToday = (digest) => {
+    setIsBriefingModalOpen(false);
+    const opener = digest?.today_opener || "Let's begin today. Ask me what today's events are.";
+    handleSendMessage(opener);
+  };
+
   const handleStartNewSession = () => {
     if (tickerIntervalRef.current) {
       clearInterval(tickerIntervalRef.current);
@@ -379,8 +393,38 @@ export default function App() {
     }
   };
 
+  // Cancel voice capture without submitting anything
+  const cancelVoiceRecording = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setRecordingSeconds(0);
+    setIsListening(false);
+
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch (e) {}
+      recognitionRef.current = null;
+    }
+
+    if (activeStreamRef.current) {
+      try {
+        activeStreamRef.current.getTracks().forEach(t => t.stop());
+      } catch (e) {}
+      activeStreamRef.current = null;
+    }
+
+    speechTextRef.current = '';
+    setInputMessage('');
+  };
+
   // Voice Recording with auto-silence detection and auto-submit
   const toggleVoiceRecording = async () => {
+    setMicError(null);
     if (isListening) {
       // User tapped stop -> immediately submit whatever was captured
       stopAndAutoSubmit();
@@ -418,22 +462,27 @@ export default function App() {
               if (speechTextRef.current.trim().length > 0) {
                 stopAndAutoSubmit(speechTextRef.current.trim());
               }
-            }, 700); // 700ms natural pause for crisp response
+            }, 3500); // 3.5s pause so mid-sentence breaks never cut you off
           }
         };
 
         recognition.onspeechend = () => {
-          // When speech ends, auto-submit after brief pause
+          // When speech ends, auto-submit after a generous pause
           if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
           silenceTimerRef.current = setTimeout(() => {
             if (speechTextRef.current.trim().length > 0) {
               stopAndAutoSubmit(speechTextRef.current.trim());
             }
-          }, 600);
+          }, 3500);
         };
 
         recognition.onerror = (e) => {
           console.warn('Speech recognition notice:', e.error);
+          if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+            setMicError('Microphone blocked — click the padlock icon in the address bar, allow Microphone for this site, then tap the mic again.');
+          } else if (e.error === 'audio-capture') {
+            setMicError('No microphone found — check that a mic is connected and not in use by another app, then try again.');
+          }
           if (e.error !== 'no-speech') {
             stopAndAutoSubmit();
           }
@@ -505,7 +554,7 @@ export default function App() {
         mediaRecorder.start(1000);
       } catch (err) {
         console.error('Microphone access error:', err);
-        alert('Microphone access was denied or unavailable.');
+        setMicError('Microphone unavailable — allow access in the browser and in Windows Settings → Privacy & security → Microphone, then try again.');
         setIsListening(false);
       }
     }
@@ -513,8 +562,8 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="h-screen bg-black text-white flex flex-col items-center justify-center font-mono-journal text-xs space-y-2">
-        <div className="w-2 h-2 rounded-full bg-[#EB0029] animate-ping" />
+      <div className="h-screen bg-black text-white flex flex-col items-center justify-center font-mono-journal text-xs space-y-4">
+        <ThinkingOrb state="breathing" size={64} theme="dark" aria-label="Initializing UnJournal secure enclave" />
         <span>INITIALIZING UNJOURNAL SECURE ENCLAVE...</span>
       </div>
     );
@@ -525,7 +574,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-black text-white selection:bg-[#EB0029] selection:text-white font-body overflow-hidden relative">
+    <div className="h-screen flex flex-col bg-black text-white selection:bg-white/30 selection:text-white font-body overflow-hidden relative">
       {/* Grain Layer */}
       <div className="grain" aria-hidden="true"></div>
 
@@ -554,48 +603,57 @@ export default function App() {
         </div>
 
         {/* Center — Liquid-Glass Navigation Buttons matching Main Page UI/UX and Text Style */}
-        <nav className="hidden md:flex items-center gap-3">
-          <button
-            onClick={() => setIsEpiphanyMapModalOpen(true)}
-            className="liquid-glass-strong text-xs px-4 py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 font-body shadow-lg"
-            title="Epiphany Horizon Maps"
-          >
-            <Compass className="w-3.5 h-3.5 text-white/70" />
-            <span>Epiphany Maps</span>
-          </button>
+        <nav className="hidden md:flex items-center gap-3" aria-label="Primary">
+          <BorderBeam size="sm" colorVariant="mono" strength={0.5} theme="dark">
+            <button
+              onClick={() => setIsEpiphanyMapModalOpen(true)}
+              className="liquid-glass-strong text-xs px-4 py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 font-body shadow-lg"
+              title="Epiphany Horizon Maps"
+            >
+              <Compass className="w-3.5 h-3.5 text-white/70" />
+              <span>Epiphany Maps</span>
+            </button>
+          </BorderBeam>
 
-          <button
-            onClick={() => setIsBriefingModalOpen(true)}
-            className="liquid-glass-strong text-xs px-4 py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 font-body shadow-lg"
-            title="60s Morning Spoken Briefing"
-          >
-            <Radio className="w-3.5 h-3.5 text-white/70" />
-            <span>60s Podcast</span>
-          </button>
+          <BorderBeam size="sm" colorVariant="mono" strength={0.5} theme="dark">
+            <button
+              onClick={() => setIsBriefingModalOpen(true)}
+              className="liquid-glass-strong text-xs px-4 py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 font-body shadow-lg"
+              title="60s Morning Spoken Briefing"
+            >
+              <Radio className="w-3.5 h-3.5 text-white/70" />
+              <span>60s Podcast</span>
+            </button>
+          </BorderBeam>
 
-          <button
-            onClick={() => setShowHistoryDrawer(!showHistoryDrawer)}
-            className="liquid-glass-strong text-xs px-4 py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 font-body shadow-lg"
-            title="Past Reflections History"
-          >
-            <History className="w-3.5 h-3.5 text-white/70" />
-            <span>Reflections ({journals.length})</span>
-          </button>
+          <BorderBeam size="sm" colorVariant="mono" strength={0.5} theme="dark">
+            <button
+              onClick={() => setShowHistoryDrawer(!showHistoryDrawer)}
+              className="liquid-glass-strong text-xs px-4 py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 font-body shadow-lg"
+              title="Past Reflections History"
+            >
+              <History className="w-3.5 h-3.5 text-white/70" />
+              <span>Reflections ({journals.length})</span>
+            </button>
+          </BorderBeam>
         </nav>
 
         {/* Right — Actions with Matching Glass Buttons & Typography */}
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleStartNewSession}
-            className="bg-white text-black rounded-full px-4 py-2.5 text-xs font-semibold hover:bg-white/90 transition-colors inline-flex items-center gap-1 font-body shadow-lg"
-            title="Start New Reflective Session"
-          >
-            <Plus className="w-3.5 h-3.5 mr-0.5 stroke-[2.5]" />
-            <span>New Entry</span>
-          </button>
+          <BorderBeam size="md" colorVariant="mono" strength={0.6} theme="dark">
+            <button
+              onClick={handleStartNewSession}
+              className="bg-white text-black rounded-full px-4 py-2.5 text-xs font-semibold hover:bg-white/90 transition-colors inline-flex items-center gap-1 font-body shadow-lg"
+              title="Start New Reflective Session"
+            >
+              <Plus className="w-3.5 h-3.5 mr-0.5 stroke-[2.5]" />
+              <span>New Entry</span>
+            </button>
+          </BorderBeam>
 
           {/* System Menu Toggle */}
           <div className="relative">
+            <BorderBeam size="sm" colorVariant="mono" strength={0.5} theme="dark">
             <button
               onClick={() => setShowMenu(!showMenu)}
               className={`liquid-glass-strong rounded-full w-10 h-10 flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition-all shadow-lg ${
@@ -605,6 +663,7 @@ export default function App() {
             >
               <MoreHorizontal className="w-4 h-4 text-white" />
             </button>
+            </BorderBeam>
 
             {showMenu && (
               <>
@@ -736,9 +795,9 @@ export default function App() {
                       signOutUser();
                       setShowMenu(false);
                     }}
-                    className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-[#EB0029]/15 text-[#EB0029] transition-all flex items-center gap-2.5 font-body group"
+                    className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-[#FFFFFF]/15 text-[#FFFFFF] transition-all flex items-center gap-2.5 font-body group"
                   >
-                    <div className="w-6 h-6 rounded-lg bg-[#EB0029]/10 border border-[#EB0029]/20 flex items-center justify-center text-[#EB0029] flex-shrink-0">
+                    <div className="w-6 h-6 rounded-lg bg-[#FFFFFF]/10 border border-[#FFFFFF]/20 flex items-center justify-center text-[#FFFFFF] flex-shrink-0">
                       <LogOut className="w-3.5 h-3.5" />
                     </div>
                     <span className="font-medium">Sign Out</span>
@@ -756,16 +815,39 @@ export default function App() {
           <div className="w-full max-w-2xl space-y-6">
             {/* Empty state: V2 Typography and Glass Button prompts */}
             {messages.length === 0 && (
-              <div className="py-10 sm:py-14 flex flex-col items-center text-center select-none space-y-4 my-auto">
-                {/* Big Prominent Heading in Instrument Serif Italic */}
-                <h1 className="text-5xl md:text-6xl lg:text-7xl font-heading italic text-white tracking-tight leading-[0.95] max-w-3xl mx-auto mb-2">
-                  What is on your mind right now?
+              <div className="w-full flex flex-col items-center text-center select-none space-y-5 pt-1 sm:pt-2 pb-10 my-0">
+                {/* Hero: sentence wrapped around a centered mic */}
+                <h1 className="text-5xl md:text-6xl lg:text-7xl font-heading italic text-white tracking-tight leading-[1.1] max-w-3xl mx-auto">
+                  <span className="block">What is on your</span>
+                  <span className="inline-flex my-4 sm:my-5 not-italic">
+                    <BorderBeam size="md" colorVariant="ocean" strength={0.6} theme="dark">
+                      <button
+                        type="button"
+                        onClick={toggleVoiceRecording}
+                        className="w-24 h-24 rounded-full liquid-glass-strong text-white hover:bg-white/10 inline-flex items-center justify-center transition-all shadow-2xl"
+                        title="Speak your reflection"
+                      >
+                        <Mic className="w-10 h-10" />
+                      </button>
+                    </BorderBeam>
+                  </span>
+                  <span className="block">mind right now?</span>
                 </h1>
 
-                {/* Subtext in Barlow */}
-                <p className="text-white/60 font-body font-light text-sm md:text-base max-w-xl mx-auto mb-4">
-                  A private space to speak your thoughts.
-                </p>
+                {/* Morning nudge: yesterday's recap when today is untouched */}
+                {yesterdayEntries.length > 0 && !hasTodayEntries && (
+                  <div className="w-full flex justify-center pt-1">
+                    <BorderBeam size="md" colorVariant="ocean" strength={0.6} theme="dark" className="rounded-full">
+                      <button
+                        onClick={() => setIsBriefingModalOpen(true)}
+                        className="liquid-glass-strong text-xs px-5 py-3 rounded-full text-white hover:bg-white/10 transition-all flex items-center gap-2 font-body shadow-lg"
+                      >
+                        <Sunrise className="w-4 h-4 text-white/80" />
+                        <span>Yesterday's recap is ready — {yesterdayEntries.length} reflection{yesterdayEntries.length === 1 ? '' : 's'} · 60s listen</span>
+                      </button>
+                    </BorderBeam>
+                  </div>
+                )}
 
                 {/* Suggested Prompts in Liquid-Glass-Strong rounded pills */}
                 <div className="flex flex-wrap items-center justify-center gap-2.5 max-w-2xl pt-2">
@@ -775,13 +857,14 @@ export default function App() {
                     "What did I write about my goals recently?",
                     "Help me clear my thoughts and unwind"
                   ].map((prompt, pIdx) => (
-                    <button
-                      key={pIdx}
-                      onClick={() => handleSendMessage(prompt)}
-                      className="liquid-glass-strong text-xs px-4 py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all text-center font-body shadow-lg"
-                    >
-                      → {prompt}
-                    </button>
+                    <BorderBeam key={pIdx} size="md" colorVariant="mono" strength={0.4} theme="dark" className="rounded-full">
+                      <button
+                        onClick={() => handleSendMessage(prompt)}
+                        className="liquid-glass-strong text-xs px-4 py-2.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-all text-center font-body shadow-lg"
+                      >
+                        → {prompt}
+                      </button>
+                    </BorderBeam>
                   ))}
                 </div>
               </div>
@@ -794,7 +877,7 @@ export default function App() {
               return (
                 <div
                   key={idx}
-                  className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} space-y-1.5`}
+                  className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} space-y-1.5 animate-in fade-in slide-in-from-bottom-4 duration-500`}
                 >
                   {/* Turn Metadata */}
                   <span className="font-mono-journal text-[10px] text-white/40 uppercase tracking-wider px-1">
@@ -953,71 +1036,48 @@ export default function App() {
       )}
 
       {/* Bottom Floating Input Bar with V2 Liquid-Glass Styling */}
-      <footer className="p-4 sm:p-6 bg-gradient-to-t from-black via-black/80 to-transparent flex flex-col items-center relative z-20">
-        {/* Attached Photo Preview */}
-        {attachedPhoto && (
-          <div className="w-full max-w-2xl mb-2.5 flex items-center justify-between p-2.5 rounded-2xl liquid-glass-strong border border-white/20 shadow-xl animate-in fade-in">
-            <div className="flex items-center gap-3">
-              <img
-                src={attachedPhoto}
-                alt="Attached memory"
-                className="w-12 h-12 object-cover rounded-xl border border-white/20 shadow-md"
-              />
-              <div>
-                <span className="text-xs font-medium text-white block">Photo Attached</span>
-                <span className="text-[11px] text-white/50 block">Will be added to your reflection</span>
-              </div>
-            </div>
+      <footer className="p-4 sm:p-6 bg-gradient-to-t from-black via-black/80 to-transparent flex flex-col items-center relative z-20 gap-4">
+        {micError && (
+          <div className="w-full max-w-2xl flex items-start gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/20 text-xs text-white/80 font-body animate-in fade-in">
+            <Mic className="w-4 h-4 mt-0.5 flex-shrink-0 text-white/60" />
+            <p className="flex-1 leading-relaxed">{micError}</p>
             <button
               type="button"
-              onClick={() => setAttachedPhoto(null)}
-              className="w-7 h-7 rounded-full bg-white/10 hover:bg-[#EB0029] text-white/70 hover:text-white flex items-center justify-center transition-all"
-              title="Remove photo"
+              onClick={() => setMicError(null)}
+              className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white flex items-center justify-center transition-all flex-shrink-0"
+              title="Dismiss"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3 h-3" />
             </button>
           </div>
         )}
-
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSendMessage();
           }}
-          className="w-full max-w-2xl flex items-center gap-2.5"
+          className="w-full max-w-2xl flex flex-col items-center gap-4"
         >
-          {/* Photo Attachment Button (Device Photos Access) */}
-          <input
-            type="file"
-            ref={photoInputRef}
-            accept="image/*"
-            className="hidden"
-            onChange={handlePhotoAttachment}
-          />
-          <button
-            type="button"
-            onClick={() => photoInputRef.current?.click()}
-            className="w-11 h-11 rounded-full liquid-glass-strong text-white/80 hover:text-white hover:bg-white/10 flex items-center justify-center flex-shrink-0 transition-all shadow-lg"
-            title="Attach Photo from Device"
-          >
-            <ImageIcon className="w-4 h-4" />
-          </button>
+          {/* Text input row */}
+          <div className="w-full flex items-center gap-2.5">
+          {/* Mic docked bottom-left of the text box */}
+          <BorderBeam size="sm" colorVariant="ocean" strength={0.6} theme="dark" className="flex-shrink-0 self-end">
+            <button
+              type="button"
+              onClick={toggleVoiceRecording}
+              className="w-11 h-11 rounded-full liquid-glass-strong text-white hover:bg-white/10 flex items-center justify-center transition-all shadow-lg"
+              title={isListening ? 'Stop Recording' : 'Dictate Reflection'}
+            >
+              {isListening ? (
+                <ThinkingOrb state="listening" size={20} theme="dark" aria-label="Listening to your voice" />
+              ) : (
+                <Mic className="w-4 h-4" />
+              )}
+            </button>
+          </BorderBeam>
 
-          {/* Dictation Voice Button with Liquid-Glass */}
-          <button
-            type="button"
-            onClick={toggleVoiceRecording}
-            className={`w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-              isListening
-                ? 'bg-[#EB0029] text-white animate-pulse shadow-lg shadow-[#EB0029]/30'
-                : 'liquid-glass-strong text-white/80 hover:text-white hover:bg-white/10'
-            }`}
-            title={isListening ? 'Stop Recording' : 'Dictate Reflection'}
-          >
-            {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-          </button>
-
-          {/* Liquid-Glass-Strong Input Container */}
+          {/* Liquid-Glass-Strong Input Container with Beam border */}
+          <BorderBeam size="md" colorVariant="colorful" strength={0.7} theme="dark" className="flex-1">
           <div className="liquid-glass-strong flex-1 rounded-full px-5 py-3 flex items-center shadow-2xl">
             <input
               type="text"
@@ -1030,7 +1090,7 @@ export default function App() {
               }
               disabled={isSending}
               className={`flex-1 bg-transparent border-0 text-sm placeholder-white/40 focus:outline-none font-body ${
-                isListening ? 'text-[#EB0029] font-medium' : 'text-white'
+                isListening ? 'text-white font-medium' : 'text-white'
               }`}
             />
 
@@ -1042,8 +1102,31 @@ export default function App() {
               <ArrowUp className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
+          </BorderBeam>
+          </div>
         </form>
       </footer>
+
+      {/* Fullscreen Listening Takeover — tap anywhere to send */}
+      {isListening && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/85 backdrop-blur-2xl flex flex-col items-center justify-center gap-6 animate-in fade-in duration-200 select-none px-6 cursor-pointer"
+          onClick={() => stopAndAutoSubmit()}
+        >
+          <div className="p-10">
+            <ThinkingOrb state="listening" size={64} theme="dark" className="scale-[2]" aria-label="Listening to your voice" />
+          </div>
+
+          <div className="flex flex-col items-center gap-2 text-center pointer-events-none">
+            <span className="font-mono-journal text-xs text-white/50 tracking-widest">
+              LISTENING · {recordingSeconds}s
+            </span>
+            <p className="text-white/90 font-body text-base max-w-md leading-relaxed min-h-[3rem]">
+              {inputMessage || 'Speak your reflection...'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       <SecurityBadgeModal
@@ -1060,6 +1143,7 @@ export default function App() {
         isOpen={isBriefingModalOpen}
         onClose={() => setIsBriefingModalOpen(false)}
         journals={journals}
+        onBeginToday={handleBeginToday}
       />
 
       <EpiphanyMapModal
