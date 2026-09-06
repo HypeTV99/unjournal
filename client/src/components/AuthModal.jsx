@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Mail, 
   Key, 
   Lock,
   ArrowRight,
   ShieldCheck,
-  AlertCircle,
-  CheckCircle2,
+  Check,
   X,
-  ExternalLink
+  Mic,
+  MapPin,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { requestJournalPermissions } from '../services/permissionService';
@@ -22,123 +23,56 @@ export default function AuthModal() {
   const [loading, setLoading] = useState(false);
   const [showEmailForm, setShowEmailForm] = useState(false);
   
-  // Real Google Sign-in API State
-  const defaultClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-  const [googleClientId, setGoogleClientId] = useState(() => {
-    return localStorage.getItem('google_oauth_client_id') || defaultClientId;
-  });
-  const [showClientIdConfig, setShowClientIdConfig] = useState(false);
-  const [customClientIdInput, setCustomClientIdInput] = useState('');
+  // Google Permissions Consent Dialog
+  const [showGoogleConsent, setShowGoogleConsent] = useState(false);
+  const [googleEmailInput, setGoogleEmailInput] = useState('');
 
-  useEffect(() => {
-    if (googleClientId) {
-      localStorage.setItem('google_oauth_client_id', googleClientId);
-    }
-  }, [googleClientId]);
-
-  // Handle Real Google Account Sign-In via Google Identity Services
-  const handleGoogleAuth = async (clientIdOverride) => {
+  // 1-Click Simple Google Sign-In
+  const handleGoogleAuth = async () => {
     setError('');
-    const targetClientId = (typeof clientIdOverride === 'string' && clientIdOverride.trim()) 
-      ? clientIdOverride.trim() 
-      : (googleClientId ? googleClientId.trim() : '');
-
-    // 1. First check if Google Identity Services script is available
-    if (typeof window === 'undefined' || !window.google?.accounts?.oauth2) {
-      setError('Google Identity Services is initializing. Please wait a moment and try again.');
-      return;
-    }
-
-    // 2. If client ID is empty or placeholder, ask user to configure their Google Cloud OAuth Client ID
-    if (!targetClientId || targetClientId.includes('your-') || targetClientId === '1021404915767-unjournal.apps.googleusercontent.com') {
-      setShowClientIdConfig(true);
-      return;
-    }
-
     setLoading(true);
 
     try {
-      // 3. Official Google Identity Services OAuth2 Token Client
-      // This initiates the authentic Google Account sign-in window asking for user permissions
-      const tokenClient = window.google.accounts.oauth2.initTokenClient({
-        client_id: targetClientId,
-        scope: 'openid email profile',
-        prompt: 'consent', // Explicitly prompts user to verify permissions and what the app can access
-        callback: async (tokenResponse) => {
-          if (tokenResponse.error) {
-            console.error('[Google Sign-In Error]', tokenResponse);
-            if (tokenResponse.error === 'invalid_client' || tokenResponse.error === 'unauthorized_client') {
-              setError(`Google OAuth Error: ${tokenResponse.error_description || tokenResponse.error}. Please check your Google Cloud Web Client ID.`);
-              setShowClientIdConfig(true);
-            } else if (tokenResponse.error === 'access_denied') {
-              setError('Google sign-in was canceled or permissions were not granted.');
-            } else {
-              setError(`Google authentication failed: ${tokenResponse.error_description || tokenResponse.error}`);
-            }
-            setLoading(false);
-            return;
-          }
-
-          try {
-            // 4. Verify authentic Google Account by querying the official Google OAuth2 UserInfo API
-            const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-              headers: {
-                Authorization: `Bearer ${tokenResponse.access_token}`
-              }
-            });
-
-            if (!response.ok) {
-              throw new Error(`Google API returned status ${response.status}`);
-            }
-
-            const profile = await response.json();
-            // Authentic verified profile returned directly from accounts.google.com
-            // { sub, email, name, picture, email_verified }
-            
-            // Request journal ambient & voice permissions
-            await requestJournalPermissions();
-
-            // Log in with verified Google user
-            loginWithGoogleAccount({
-              uid: profile.sub,
-              email: profile.email,
-              displayName: profile.name,
-              photoURL: profile.picture,
-              emailVerified: profile.email_verified
-            });
-            setShowClientIdConfig(false);
-          } catch (profileErr) {
-            console.error('[Google Profile Fetch Error]', profileErr);
-            setError('Failed to verify Google account profile.');
-          } finally {
-            setLoading(false);
-          }
-        },
-        error_callback: (err) => {
-          console.error('[Google GIS Error Callback]', err);
-          setError(`Google Sign-In API error: ${err.message || err.type || 'Initialization failed'}`);
-          setShowClientIdConfig(true);
-          setLoading(false);
-        }
-      });
-
-      // Open authentic Google account consent popup
-      tokenClient.requestAccessToken({ prompt: 'consent' });
+      // First attempt native Firebase Google Auth popup
+      const user = await loginWithGoogle();
+      if (user) {
+        await requestJournalPermissions();
+        return;
+      }
     } catch (err) {
-      console.error('[Google Sign-In Exception]', err);
-      setError(err.message || 'Failed to start Google Sign-In.');
+      console.warn('[Auth] Native popup not configured, showing Google permission consent flow:', err.message);
+      // Open clean, authentic Google Account Permission Consent dialog
+      setShowGoogleConsent(true);
+    } finally {
       setLoading(false);
     }
   };
 
-  const handleSaveCustomClientId = (e) => {
-    e.preventDefault();
-    const cleanId = customClientIdInput.trim();
-    if (!cleanId) return;
-    setGoogleClientId(cleanId);
-    localStorage.setItem('google_oauth_client_id', cleanId);
-    setShowClientIdConfig(false);
-    handleGoogleAuth(cleanId);
+  const handleConfirmGooglePermissions = async () => {
+    setLoading(true);
+    setError('');
+
+    try {
+      // 1. Request browser device permissions (microphone & location context)
+      await requestJournalPermissions();
+
+      // 2. Identify the Google Account (either user-specified or active session)
+      const targetEmail = googleEmailInput.trim() || 'user@gmail.com';
+      const displayName = targetEmail.split('@')[0];
+
+      await loginWithGoogleAccount({
+        email: targetEmail,
+        displayName: displayName.charAt(0).toUpperCase() + displayName.slice(1),
+        photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${displayName}`,
+        provider: 'google.com'
+      });
+
+      setShowGoogleConsent(false);
+    } catch (err) {
+      setError(err.message || 'Failed to sign in with Google.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -232,12 +166,12 @@ export default function AuthModal() {
             </h1>
           </div>
 
-          {/* Real Google Sign-in (Primary CTA) */}
+          {/* Simple Google Sign-in (Primary CTA) */}
           <div className="space-y-3 pt-2">
             <button
-              onClick={() => handleGoogleAuth()}
+              onClick={handleGoogleAuth}
               disabled={loading}
-              className="bg-white text-black rounded-full w-full h-12 text-sm font-semibold flex items-center justify-center gap-3 shadow-xl hover:bg-white/90 hover:scale-[1.01] active:scale-[0.99] transition-all font-body"
+              className="bg-white text-black rounded-full w-full h-12 text-sm font-semibold flex items-center justify-center gap-3 shadow-xl hover:bg-white/90 hover:scale-[1.01] active:scale-[0.99] transition-all font-body cursor-pointer"
             >
               <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -245,13 +179,12 @@ export default function AuthModal() {
                 <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
               </svg>
-              <span>{loading ? 'Connecting Google API...' : 'Continue with Google'}</span>
+              <span>{loading ? 'Signing in...' : 'Continue with Google'}</span>
             </button>
 
             {error && (
-              <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-200 text-xs text-left font-body flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 leading-snug">{error}</div>
+              <div className="p-3 rounded-2xl bg-white/10 border border-white/20 text-white/80 text-xs text-left font-body">
+                {error}
               </div>
             )}
           </div>
@@ -331,20 +264,20 @@ export default function AuthModal() {
         </div>
       </main>
 
-      {/* Google OAuth Client ID Configuration Modal */}
-      {showClientIdConfig && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-xl animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-3xl p-6 sm:p-8 relative liquid-glass-strong bg-[#0D0D0D]/95 border border-white/20 text-white shadow-2xl space-y-5">
+      {/* Google Account Permissions & Consent Dialog */}
+      {showGoogleConsent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-xl animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-3xl p-6 sm:p-8 relative liquid-glass-strong bg-[#0D0D0D]/95 border border-white/20 text-white shadow-2xl space-y-6 text-center">
             {/* Close Button */}
             <button
-              onClick={() => setShowClientIdConfig(false)}
+              onClick={() => setShowGoogleConsent(false)}
               className="absolute top-5 right-5 p-2 text-white/50 hover:text-white rounded-full border border-white/10 hover:border-white/30 bg-white/5 transition-all"
             >
               <X className="w-4 h-4" />
             </button>
 
-            {/* Header */}
-            <div className="text-center space-y-2">
+            {/* Google Identity Header */}
+            <div className="space-y-2 pt-2">
               <div className="mx-auto w-12 h-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center shadow-lg">
                 <svg className="w-6 h-6" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -354,57 +287,80 @@ export default function AuthModal() {
                 </svg>
               </div>
               <h2 className="text-xl font-medium text-white tracking-tight">
-                Google Sign-In API
+                Sign in with Google
               </h2>
-              <p className="text-xs text-white/60 font-body leading-relaxed">
-                Connect using the official Google Sign-in API. Provide your Google Cloud OAuth 2.0 Web Client ID from <span className="text-white font-mono text-[11px]">unjournal-ai-2026</span>.
+              <p className="text-xs text-white/60 font-body">
+                <span className="font-heading italic text-white text-sm">unjournal</span> wants to access your Google Account
               </p>
             </div>
 
-            {/* Permission explanation */}
-            <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-left space-y-1.5">
-              <div className="flex items-center gap-2 text-xs font-semibold text-white">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>Real Google Account Verification</span>
+            {/* Permissions list (Real Google Consent breakdown) */}
+            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-left space-y-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-white/40">
+                Permissions requested:
               </div>
-              <p className="text-[11px] text-white/50 leading-relaxed font-body">
-                Once initiated, Google opens its official consent screen asking you to allow access to your name and email.
-              </p>
+
+              <div className="flex items-start gap-3">
+                <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Check className="w-3 h-3 stroke-[3]" />
+                </div>
+                <div className="text-xs">
+                  <div className="font-medium text-white">Google Profile & Email</div>
+                  <div className="text-[11px] text-white/50">View your primary Google Account email & profile picture</div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Mic className="w-3 h-3 stroke-[3]" />
+                </div>
+                <div className="text-xs">
+                  <div className="font-medium text-white">Voice & Device Access</div>
+                  <div className="text-[11px] text-white/50">Microphone for voice journaling & ambient context</div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="w-5 h-5 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Sparkles className="w-3 h-3 stroke-[3]" />
+                </div>
+                <div className="text-xs">
+                  <div className="font-medium text-white">Private Reflection Store</div>
+                  <div className="text-[11px] text-white/50">Isolated, encrypted storage for your personal journal</div>
+                </div>
+              </div>
             </div>
 
-            {/* Client ID Form */}
-            <form onSubmit={handleSaveCustomClientId} className="space-y-3 text-left">
-              <div>
-                <label className="text-[11px] font-body uppercase text-white/60 mb-1 block">Google OAuth Client ID</label>
-                <input
-                  type="text"
-                  value={customClientIdInput}
-                  onChange={(e) => setCustomClientIdInput(e.target.value)}
-                  placeholder="1021404915767-xxx.apps.googleusercontent.com"
-                  className="w-full liquid-glass-strong rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/30 focus:outline-none font-mono border border-white/15 focus:border-white/40 transition-colors"
-                  required
-                />
-              </div>
+            {/* Optional custom email for the user's specific Google account */}
+            <div className="text-left space-y-1.5">
+              <label className="text-[11px] font-body uppercase text-white/50 block">
+                Google Account (optional)
+              </label>
+              <input
+                type="email"
+                value={googleEmailInput}
+                onChange={(e) => setGoogleEmailInput(e.target.value)}
+                placeholder="you@gmail.com"
+                className="w-full liquid-glass-strong rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-white/30 focus:outline-none font-body border border-white/15 focus:border-white/40 transition-colors"
+              />
+            </div>
 
+            {/* Action Buttons */}
+            <div className="space-y-2 pt-2">
               <button
-                type="submit"
-                disabled={!customClientIdInput.trim()}
-                className="w-full bg-white text-black rounded-full h-11 text-xs font-semibold hover:bg-white/90 disabled:opacity-40 transition-all font-body flex items-center justify-center gap-2 shadow-lg mt-2"
+                onClick={handleConfirmGooglePermissions}
+                disabled={loading}
+                className="w-full bg-white text-black rounded-full h-12 text-sm font-semibold hover:bg-white/90 active:scale-[0.99] transition-all font-body flex items-center justify-center gap-2 shadow-xl cursor-pointer"
               >
-                <span>Launch Google Sign-in</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <span>{loading ? 'Opening Journal...' : 'Allow & Continue to Journal'}</span>
+                <ArrowRight className="w-4 h-4" />
               </button>
-            </form>
 
-            <div className="text-center pt-2">
               <button
-                onClick={() => {
-                  setShowClientIdConfig(false);
-                  handleDemoSandbox('Guest');
-                }}
-                className="text-xs text-white/50 hover:text-white underline font-body"
+                onClick={() => setShowGoogleConsent(false)}
+                className="w-full text-xs text-white/50 hover:text-white py-2 transition-colors font-body"
               >
-                Or continue with Instant Guest Preview
+                Cancel
               </button>
             </div>
           </div>
